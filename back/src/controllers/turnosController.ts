@@ -1,96 +1,73 @@
 import { Request, Response } from "express";
+import { Turno } from "../models/turnosModel";
 
-// Array en memoria para almacenar turnos temporalmente
-let turnos: any[] = [];
-
-// 🔹 Función para eliminar los turnos de la semana anterior
-export const eliminateTurnosPrev = (): void => {
+// 🔹 Eliminar los turnos de la semana pasada
+export const eliminateTurnosPrev = async (): Promise<void> => {
     const hoy = new Date();
-    const diaActual = hoy.getDate();
-    
-    // Obtener la fecha de hace 7 días
     const fechaAnterior = new Date();
-    fechaAnterior.setDate(diaActual - 7);
-    const semanaPasada = fechaAnterior.toISOString().split("T")[0]; // Formato YYYY-MM-DD
+    fechaAnterior.setDate(hoy.getDate() - 7);
+    const semanaPasada = fechaAnterior.toISOString().split("T")[0]; // YYYY-MM-DD
 
-    // Filtrar solo los turnos de la semana actual
-    turnos = turnos.filter(turno => turno.dia > semanaPasada);
-    
-    console.log(`🗑 Turnos de la semana anterior eliminados. Fecha límite: ${semanaPasada}`);
+    await Turno.deleteMany({ dia: { $lte: semanaPasada } });
+
+    console.log(`🗑 Turnos de la semana pasada eliminados. Fecha límite: ${semanaPasada}`);
 };
 
-// 🔹 Función para generar turnos de toda la semana
-export const generateNewTurnos = (): void => {
+// 🔹 Generar turnos para las próximas dos semanas
+export const generateNewTurnos = async (): Promise<void> => {
     const hoy = new Date();
-    turnos = []; // Reiniciamos los turnos antes de agregar los nuevos
 
-    for (let i = 0; i < 7; i++) { // Generar turnos para 7 días
+    for (let i = 0; i < 14; i++) { // Generar turnos para 14 días (2 semanas)
         const fecha = new Date();
         fecha.setDate(hoy.getDate() + i);
         const dia = fecha.toISOString().split("T")[0]; // YYYY-MM-DD
 
-        const horarios = Array.from({ length: 9 }, (_, i) => `${8 + i}:00`); // ["08:00", ..., "16:00"]
+        const horarios = Array.from({ length: 9 }, (_, i) => `${8 + i}:00`);
 
-        horarios.forEach((horario, index) => {
-            turnos.push({
-                id: turnos.length + 1,
-                estado: false, // false = disponible
-                dia,
-                horario,
-            });
-        });
+        for (const horario of horarios) {
+            const existe = await Turno.findOne({ dia, horario });
+            if (!existe) {
+                await Turno.create({ dia, horario, estado: false });
+            }
+        }
     }
 
-    console.log("✅ Turnos generados para la nueva semana.");
+    console.log("✅ Turnos generados para las próximas dos semanas.");
 };
 
-
-// Función para obtener los turnos
-export const getTurnos = (req: Request, res: Response): void => {
+// 🔹 Obtener todos los turnos
+export const getTurnos = async (req: Request, res: Response): Promise<void> => {
+    const turnos = await Turno.find();
     res.json(turnos);
 };
 
-// Función para generar turnos de 8:00 a 16:00 cada hora
-export const crearTurnos = (req: Request, res: Response): void => {
-    const diaActual = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
-    const horarios = Array.from({ length: 9 }, (_, i) => `${8 + i}:00`);
-
-    // Evitar duplicados
-    if (turnos.length > 0) {
-        res.status(400).json({ message: "Los turnos ya han sido generados para hoy." });
-        return;
-    }
-
-    turnos = horarios.map((horario, index) => ({
-        id: index + 1,
-        estado: false, // false = disponible, true = reservado
-        dia: diaActual,
-        horario,
-    }));
-
-    res.status(201).json({ message: "Turnos generados correctamente", turnos });
+// 🔹 Generar turnos del día (NO SE USA, PERO SE DEJA POR SI SE NECESITA)
+export const crearTurnos = async (req: Request, res: Response): Promise<void> => {
+    res.status(400).json({ message: "Esta función ya no es necesaria." });
 };
 
-// Función para reservar un turno
-export const reservarTurno = (req: Request, res: Response): void => {
+// 🔹 Reservar un turno
+export const reservarTurno = async (req: Request, res: Response): Promise<void> => {
     const { id } = req.params;
 
-    // Buscar el turno por ID
-    const turnoIndex = turnos.findIndex(turno => turno.id === parseInt(id));
+    try {
+        const turno = await Turno.findById(id);
 
-    if (turnoIndex === -1) {
-        res.status(404).json({ message: "Turno no encontrado" });
-        return;
+        if (!turno) {
+            res.status(404).json({ message: "Turno no encontrado" });
+            return;
+        }
+
+        if (turno.estado) {
+            res.status(400).json({ message: "Este turno ya está reservado" });
+            return;
+        }
+
+        turno.estado = true;
+        await turno.save();
+
+        res.status(200).json({ message: "Turno reservado correctamente", turno });
+    } catch (error) {
+        res.status(500).json({ message: "Error en la reserva del turno" });
     }
-
-    if (turnos[turnoIndex].estado) {
-        res.status(400).json({ message: "Este turno ya está reservado" });
-        return;
-    }
-
-    // Reservar el turno cambiando `estado` a true
-    turnos[turnoIndex].estado = true;
-
-    res.status(200).json({ message: "Turno reservado correctamente", turno: turnos[turnoIndex] });
 };
-

@@ -1,15 +1,24 @@
 import express from "express";
 import cors from "cors";
+import mongoose from "mongoose";
+import dotenv from "dotenv";
 import turnoRoutes from "./routes/tournosRoute";
-import "./helpers/shedule"; // Cron para la actualización semanal
-import { generateNewTurnos } from "./controllers/turnosController"; // Importamos la función
+import "./helpers/shedule"; // Mantiene la ejecución del cron
+import { generateNewTurnos } from "./controllers/turnosController"; // Función de generación
+
+dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = 8080;
 
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// Conectar a MongoDB
+mongoose.connect(process.env.MONGO_URI as string, { dbName: "Ecowash" })
+    .then(() => console.log("✅ Conectado a MongoDB"))
+    .catch(err => console.error("❌ Error conectando a MongoDB:", err));
 
 // Generar los turnos al iniciar el servidor
 console.log("🛠 Creando turnos al iniciar el servidor...");
@@ -20,5 +29,9 @@ app.use("/api/turnos", turnoRoutes);
 
 // Iniciar el servidor
 app.listen(PORT, () => {
-    console.log(`Servidor corriendo en http://localhost:${PORT}`);
+    console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
 });
+
+
+
+
